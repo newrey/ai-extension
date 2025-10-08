@@ -1,0 +1,9 @@
+[submodule "ext/drawio"]
+	path = ext/drawio
+	url = https://github.com/jgraph/drawio.git
+[submodule "ext/drawio-desktop"]
+	path = ext/drawio-desktop
+	url = https://github.com/jgraph/drawio-desktop.git
+[submodule "ext/drawio-integration"]
+	path = ext/drawio-integration
+	url = https://github.com/jgraph/drawio-integration.git
