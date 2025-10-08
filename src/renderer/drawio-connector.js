@@ -25,41 +25,10 @@ class DrawioConnector {
     waitForDrawioLoad() {
         this.drawioFrame.addEventListener('load', () => {
             console.log('Draw.io iframe加载完成');
-            this.injectDrawioAPI();
         });
     }
 
-    injectDrawioAPI() {
-        console.log('开始注入Draw.io API模块');
-        
-        // 读取drawio-api.js文件内容并直接注入到iframe中
-        fetch('./drawio-api.js')
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                return response.text();
-            })
-            .then(scriptContent => {
-                console.log('成功获取Draw.io API模块内容');
-                
-                // 创建script元素并注入内容
-                const script = document.createElement('script');
-                script.textContent = scriptContent;
-                
-                // 将script元素添加到iframe中
-                try {
-                    const iframeDocument = this.drawioFrame.contentDocument || this.drawioFrame.contentWindow.document;
-                    iframeDocument.head.appendChild(script);
-                    console.log('Draw.io API模块注入成功');
-                } catch (error) {
-                    console.error('注入Draw.io API模块失败:', error);
-                }
-            })
-            .catch(error => {
-                console.error('加载Draw.io API模块失败:', error);
-            });
-    }
+
 
     handleDrawioMessage(data) {
         console.log('收到Draw.io消息:', data);

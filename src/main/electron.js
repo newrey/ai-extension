@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import Store from 'electron-store';
+import DrawioHttpServer from '../server/http-server.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -10,6 +11,7 @@ const __dirname = path.dirname(__filename);
 const store = new Store();
 
 let mainWindow;
+let httpServer;
 
 function createWindow() {
   // 创建浏览器窗口
@@ -53,7 +55,17 @@ app.commandLine.appendSwitch('--disable-gpu-sandbox');
 app.commandLine.appendSwitch('--no-sandbox');
 
 // 应用准备就绪时创建窗口
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // 启动HTTP服务器
+  try {
+    httpServer = new DrawioHttpServer();
+    const port = await httpServer.start();
+    console.log(`Draw.io HTTP服务器运行在端口: ${port}`);
+  } catch (error) {
+    console.error('HTTP服务器启动失败:', error);
+    // 即使服务器启动失败，也继续启动应用
+  }
+
   createWindow();
 
   app.on('activate', () => {
@@ -64,58 +76,27 @@ app.whenReady().then(() => {
 });
 
 // 所有窗口关闭时退出应用（macOS除外）
-app.on('window-all-closed', () => {
+app.on('window-all-closed', async () => {
   if (process.platform !== 'darwin') {
+    // 关闭HTTP服务器
+    if (httpServer) {
+      await httpServer.stop();
+    }
     app.quit();
   }
 });
 
-// IPC通信处理
-ipcMain.handle('get-drawio-functions', () => {
-  // 返回可用的drawio操作函数列表
-  return {
-    functions: [
-      'add_new_rectangle',
-      'delete_cell_by_id', 
-      'add_edge',
-      'get_shape_categories',
-      'get_shapes_in_category',
-      'get_shape_by_name',
-      'add_cell_of_shape',
-      'list_paged_model'
-    ]
-  };
-});
-
-ipcMain.handle('execute-drawio-function', async (event, { functionName, parameters }) => {
-  try {
-    // 检查窗口是否仍然存在
-    if (!mainWindow || mainWindow.isDestroyed()) {
-      return { success: false, error: '窗口已关闭' };
-    }
-    
-    // 这里将通过preload脚本调用drawio函数
-    const result = await mainWindow.webContents.executeJavaScript(`
-      window.drawioAPI?.${functionName}?.(${JSON.stringify(parameters)});
-    `);
-    return { success: true, result };
-  } catch (error) {
-    console.error('执行drawio函数错误:', error);
-    return { success: false, error: error.message };
+// 应用即将退出时清理资源
+app.on('before-quit', async (event) => {
+  console.log('应用即将退出，清理资源...');
+  // 关闭HTTP服务器
+  if (httpServer) {
+    await httpServer.stop();
   }
 });
 
+// 保留基本的IPC通信处理（如果需要扩展功能时使用）
 ipcMain.handle('show-message-box', async (event, options) => {
   const result = await dialog.showMessageBox(mainWindow, options);
   return result;
-});
-
-// 保存和加载用户设置
-ipcMain.handle('save-settings', async (event, settings) => {
-  store.set('userSettings', settings);
-  return { success: true };
-});
-
-ipcMain.handle('load-settings', async () => {
-  return store.get('userSettings', {});
 });
