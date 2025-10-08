@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog, session } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import Store from 'electron-store';
+import { MCPServer } from '../mcp/mcp-server.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -11,6 +12,7 @@ const store = new Store();
 
 let mainWindow;
 let isClosing = false; // 防止重复关闭的标志
+let mcpServer; // MCP服务器实例
 
 function createWindow() {
   // 创建浏览器窗口
@@ -113,9 +115,35 @@ app.commandLine.appendSwitch('--disable-gpu');
 app.commandLine.appendSwitch('--disable-gpu-sandbox');
 app.commandLine.appendSwitch('--no-sandbox');
 
-// 应用准备就绪时创建窗口
-app.whenReady().then(() => {
+// 启动MCP服务器
+async function startMCPServer() {
+  try {
+    mcpServer = new MCPServer(3001);
+    await mcpServer.start();
+    console.log('MCP服务器启动成功');
+  } catch (error) {
+    console.error('MCP服务器启动失败:', error);
+  }
+}
+
+// 停止MCP服务器
+async function stopMCPServer() {
+  if (mcpServer) {
+    try {
+      await mcpServer.stop();
+      console.log('MCP服务器已停止');
+    } catch (error) {
+      console.error('停止MCP服务器失败:', error);
+    }
+  }
+}
+
+// 应用准备就绪时创建窗口和启动MCP服务器
+app.whenReady().then(async () => {
   createWindow();
+  
+  // 启动MCP服务器
+  await startMCPServer();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -132,8 +160,9 @@ app.on('window-all-closed', () => {
 });
 
 // 应用即将退出时清理资源
-app.on('before-quit', (event) => {
+app.on('before-quit', async (event) => {
   console.log('Application is about to quit, cleaning up resources...');
+  await stopMCPServer();
 });
 
 // 保留基本的IPC通信处理（如果需要扩展功能时使用）
