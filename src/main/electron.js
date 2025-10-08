@@ -1,8 +1,7 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, session } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import Store from 'electron-store';
-import DrawioHttpServer from '../server/http-server.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -11,7 +10,6 @@ const __dirname = path.dirname(__filename);
 const store = new Store();
 
 let mainWindow;
-let httpServer;
 
 function createWindow() {
   // 创建浏览器窗口
@@ -22,9 +20,27 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       enableRemoteModule: false,
-      preload: path.join(__dirname, 'preload.js')
+      preload: path.join(__dirname, 'preload.js'),
+      webSecurity: true
     },
     icon: path.join(__dirname, '../../ext/drawio/src/main/webapp/images/drawlogo256.png')
+  });
+
+  // 设置内容安全策略
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [
+          "default-src 'self'; " +
+          "script-src 'self' 'unsafe-inline'; " +
+          "style-src 'self' 'unsafe-inline'; " +
+          "img-src 'self' data:; " +
+          "frame-src 'self' file:; " +
+          "connect-src 'self'"
+        ]
+      }
+    });
   });
 
   // 加载新的主页面（包含Draw.io iframe和AI面板）
@@ -38,7 +54,6 @@ function createWindow() {
 
   // 窗口关闭事件
   mainWindow.on('close', (event) => {
-    // 在窗口关闭前进行清理
     console.log('窗口正在关闭，进行清理...');
   });
 
@@ -55,17 +70,7 @@ app.commandLine.appendSwitch('--disable-gpu-sandbox');
 app.commandLine.appendSwitch('--no-sandbox');
 
 // 应用准备就绪时创建窗口
-app.whenReady().then(async () => {
-  // 启动HTTP服务器
-  try {
-    httpServer = new DrawioHttpServer();
-    const port = await httpServer.start();
-    console.log(`Draw.io HTTP服务器运行在端口: ${port}`);
-  } catch (error) {
-    console.error('HTTP服务器启动失败:', error);
-    // 即使服务器启动失败，也继续启动应用
-  }
-
+app.whenReady().then(() => {
   createWindow();
 
   app.on('activate', () => {
@@ -76,23 +81,15 @@ app.whenReady().then(async () => {
 });
 
 // 所有窗口关闭时退出应用（macOS除外）
-app.on('window-all-closed', async () => {
+app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
-    // 关闭HTTP服务器
-    if (httpServer) {
-      await httpServer.stop();
-    }
     app.quit();
   }
 });
 
 // 应用即将退出时清理资源
-app.on('before-quit', async (event) => {
+app.on('before-quit', (event) => {
   console.log('应用即将退出，清理资源...');
-  // 关闭HTTP服务器
-  if (httpServer) {
-    await httpServer.stop();
-  }
 });
 
 // 保留基本的IPC通信处理（如果需要扩展功能时使用）

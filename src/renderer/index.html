@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' http://localhost:3001; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; frame-src 'self' file:;">
     <title>AI Draw.io</title>
     <style>
         * {
@@ -115,8 +115,7 @@
     <div class="container">
         <!-- Draw.io iframe区域 -->
         <iframe id="drawio-frame" class="drawio-frame" 
-                src="file:///z:/code/llm-play/drawio/workspace/ext/drawio/src/main/webapp/index.html">
-
+                src="../../ext/drawio/src/main/webapp/index.html">
         </iframe>
         
         <!-- AI聊天面板 -->
