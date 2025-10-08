@@ -35,18 +35,22 @@ function createWindow() {
   }
 
   // 窗口关闭事件
+  mainWindow.on('close', (event) => {
+    // 在窗口关闭前进行清理
+    console.log('窗口正在关闭，进行清理...');
+  });
+
   mainWindow.on('closed', () => {
+    console.log('窗口已关闭');
     mainWindow = null;
   });
 }
 
-// 禁用GPU加速以解决Windows上的图形问题
+// GPU配置 - 使用必要的开关确保应用能够启动
 app.disableHardwareAcceleration();
 app.commandLine.appendSwitch('--disable-gpu');
-app.commandLine.appendSwitch('--disable-gpu-compositing');
-app.commandLine.appendSwitch('--disable-software-rasterizer');
+app.commandLine.appendSwitch('--disable-gpu-sandbox');
 app.commandLine.appendSwitch('--no-sandbox');
-app.commandLine.appendSwitch('--disable-features=VizDisplayCompositor');
 
 // 应用准备就绪时创建窗口
 app.whenReady().then(() => {
@@ -85,6 +89,11 @@ ipcMain.handle('get-drawio-functions', () => {
 
 ipcMain.handle('execute-drawio-function', async (event, { functionName, parameters }) => {
   try {
+    // 检查窗口是否仍然存在
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return { success: false, error: '窗口已关闭' };
+    }
+    
     // 这里将通过preload脚本调用drawio函数
     const result = await mainWindow.webContents.executeJavaScript(`
       window.drawioAPI?.${functionName}?.(${JSON.stringify(parameters)});

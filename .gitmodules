@@ -7,3 +7,6 @@
 [submodule "ext/drawio-integration"]
 	path = ext/drawio-integration
 	url = https://github.com/jgraph/drawio-integration.git
+[submodule "ext/drawio-mcp-extension"]
+	path = ext/drawio-mcp-extension
+	url = https://github.com/lgazo/drawio-mcp-extension.git
