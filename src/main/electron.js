@@ -10,6 +10,7 @@ const __dirname = path.dirname(__filename);
 const store = new Store();
 
 let mainWindow;
+let isClosing = false; // 防止重复关闭的标志
 
 function createWindow() {
   // 创建浏览器窗口
@@ -52,14 +53,57 @@ function createWindow() {
     mainWindow.webContents.openDevTools();
   }
 
-  // 窗口关闭事件
+  // 窗口关闭事件 - 添加页面清理和防重复机制
   mainWindow.on('close', (event) => {
-    console.log('窗口正在关闭，进行清理...');
+    if (isClosing) {
+      // 如果已经在关闭过程中，阻止重复处理
+      event.preventDefault();
+      return;
+    }
+    
+    console.log('Window is closing, cleaning up...');
+    isClosing = true;
+    
+    // 在关闭前清理页面内容，特别是Draw.io iframe
+    mainWindow.webContents.executeJavaScript(`
+      try {
+        // 清理Draw.io iframe
+        const iframe = document.getElementById('drawio-frame');
+        if (iframe) {
+          iframe.src = 'about:blank';
+          iframe.remove();
+        }
+        
+        // 清理全局对象
+        window.aiPanel = null;
+        window.drawioConnector = null;
+        window.drawioAPI = null;
+        
+        // 清理事件监听器
+        document.removeEventListener('DOMContentLoaded', null);
+        window.removeEventListener('message', null);
+        
+        console.log('Page cleanup completed');
+      } catch (error) {
+        console.error('Page cleanup error:', error);
+      }
+    `).catch(error => {
+      console.error('Failed to execute cleanup script:', error);
+    });
+    
+    // 设置超时，确保即使清理失败也能关闭窗口
+    setTimeout(() => {
+      if (isClosing) {
+        console.log('Forcing window close after timeout');
+        mainWindow.destroy();
+      }
+    }, 2000); // 2秒后强制关闭
   });
 
   mainWindow.on('closed', () => {
-    console.log('窗口已关闭');
+    console.log('Window closed');
     mainWindow = null;
+    isClosing = false; // 重置关闭状态
   });
 }
 
@@ -89,7 +133,7 @@ app.on('window-all-closed', () => {
 
 // 应用即将退出时清理资源
 app.on('before-quit', (event) => {
-  console.log('应用即将退出，清理资源...');
+  console.log('Application is about to quit, cleaning up resources...');
 });
 
 // 保留基本的IPC通信处理（如果需要扩展功能时使用）
