@@ -1,5 +1,29 @@
 // Draw.io API模块 - 重构为在主页面运行，通过动态获取UI对象
 (function() {
+    // IPC communication support
+    const { ipcRenderer } = require('electron');
+    
+    // Handle MCP API calls from main process
+    ipcRenderer.on('execute-drawio-api', async (event, { method, params, requestId }) => {
+        try {
+            if (window.drawioAPI && window.drawioAPI[method]) {
+                const result = await window.drawioAPI[method](params);
+                ipcRenderer.send('mcp-api-response', {
+                    success: true,
+                    result: result,
+                    requestId: requestId
+                });
+            } else {
+                throw new Error(`Method ${method} not found in drawioAPI`);
+            }
+        } catch (error) {
+            ipcRenderer.send('mcp-api-response', {
+                success: false,
+                error: error instanceof Error ? error.message : 'Unknown error',
+                requestId: requestId
+            });
+        }
+    });
     // 形状库定义（从drawio_stub.ts复制）
     const shape_library_stub = {
         rectangle: { category: "general", style: "rounded=0;whiteSpace=wrap;html=1;" },

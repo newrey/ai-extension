@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog, session } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import Store from 'electron-store';
-import { MCPServer } from '../mcp/mcp-server.js';
+import { server, app as mcpApp, setIpcBridge } from '../mcp/drawio-mcp-server.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -11,8 +11,8 @@ const __dirname = path.dirname(__filename);
 const store = new Store();
 
 let mainWindow;
-let isClosing = false; // 防止重复关闭的标志
-let mcpServer; // MCP服务器实例
+let isClosing = false; // Prevent duplicate closing
+let mcpServerInstance; // MCP server instance
 
 function createWindow() {
   // 创建浏览器窗口
@@ -115,34 +115,100 @@ app.commandLine.appendSwitch('--disable-gpu');
 app.commandLine.appendSwitch('--disable-gpu-sandbox');
 app.commandLine.appendSwitch('--no-sandbox');
 
-// 启动MCP服务器
+// Start MCP server
 async function startMCPServer() {
   try {
-    mcpServer = new MCPServer(3001);
-    await mcpServer.start();
-    console.log('MCP服务器启动成功');
+    // Set IPC bridge for MCP server
+    setIpcBridge({
+      on: (channel, callback) => ipcMain.on(channel, callback),
+      removeListener: (channel, callback) => ipcMain.removeListener(channel, callback),
+      send: (channel, message) => {
+        if (mainWindow && mainWindow.webContents) {
+          mainWindow.webContents.send(channel, message);
+        }
+      }
+    });
+    
+    // Start MCP server
+    const PORT = process.env.MCP_PORT || 3001;
+    mcpServerInstance = mcpApp.listen(PORT, () => {
+      console.log(`Draw.io MCP server running on http://localhost:${PORT}`);
+      console.log(`MCP endpoint: http://localhost:${PORT}/mcp`);
+      console.log(`Health check: http://localhost:${PORT}/mcp/health`);
+    });
+    
+    console.log('MCP server started successfully');
   } catch (error) {
-    console.error('MCP服务器启动失败:', error);
+    console.error('Failed to start MCP server:', error);
   }
 }
 
-// 停止MCP服务器
+// Stop MCP server
 async function stopMCPServer() {
-  if (mcpServer) {
+  if (mcpServerInstance) {
     try {
-      await mcpServer.stop();
-      console.log('MCP服务器已停止');
+      mcpServerInstance.close();
+      console.log('MCP server stopped');
     } catch (error) {
-      console.error('停止MCP服务器失败:', error);
+      console.error('Failed to stop MCP server:', error);
     }
   }
 }
 
-// 应用准备就绪时创建窗口和启动MCP服务器
+// Handle MCP API calls from renderer process
+ipcMain.handle('mcp-api-call', async (event, message) => {
+  try {
+    const { method, params, requestId } = message;
+    
+    // Check if Draw.io API is available in renderer
+    if (!mainWindow || !mainWindow.webContents) {
+      throw new Error('Renderer not available');
+    }
+    
+    // Send API call to renderer process
+    const result = await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('API call timeout'));
+      }, 10000);
+      
+      const responseHandler = (event, response) => {
+        if (response.requestId === requestId) {
+          clearTimeout(timeout);
+          ipcMain.removeListener('mcp-api-response', responseHandler);
+          
+          if (response.success) {
+            resolve(response.result);
+          } else {
+            reject(new Error(response.error || 'API call failed'));
+          }
+        }
+      };
+      
+      ipcMain.on('mcp-api-response', responseHandler);
+      
+      // Send API call to renderer
+      mainWindow.webContents.send('execute-drawio-api', {
+        method,
+        params,
+        requestId
+      });
+    });
+    
+    return { success: true, result, requestId };
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error',
+      requestId: message.requestId 
+    };
+  }
+});
+
+// Application ready - create window and start MCP server
 app.whenReady().then(async () => {
   createWindow();
   
-  // 启动MCP服务器
+  // Start MCP server
   await startMCPServer();
 
   app.on('activate', () => {
