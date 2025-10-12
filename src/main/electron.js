@@ -1,18 +1,15 @@
 import { app, BrowserWindow, ipcMain, dialog, session } from 'electron';
 import path from 'path';
+import os from 'os';
 import { fileURLToPath } from 'url';
-import Store from 'electron-store';
-import { MCPServer } from '../mcp/mcp-server.js';
+import { app as mcpApp, setMainWindow } from '../mcp/drawio-mcp-server.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// 初始化配置存储
-const store = new Store();
-
 let mainWindow;
-let isClosing = false; // 防止重复关闭的标志
-let mcpServer; // MCP服务器实例
+let isClosing = false; // Prevent duplicate closing
+let mcpServerInstance; // MCP server instance
 
 function createWindow() {
   // 创建浏览器窗口
@@ -115,34 +112,60 @@ app.commandLine.appendSwitch('--disable-gpu');
 app.commandLine.appendSwitch('--disable-gpu-sandbox');
 app.commandLine.appendSwitch('--no-sandbox');
 
-// 启动MCP服务器
+// Start MCP server
 async function startMCPServer() {
   try {
-    mcpServer = new MCPServer(3001);
-    await mcpServer.start();
-    console.log('MCP服务器启动成功');
+    // 传递主窗口对象给 MCP server
+    setMainWindow(mainWindow);
+    
+    // Start MCP server
+    const PORT = process.env.MCP_PORT || 3001;
+    const HOST = '0.0.0.0';  // 监听所有网络接口
+    
+    // 获取本机IP地址
+    // const os = require('os');
+    const networkInterfaces = os.networkInterfaces();
+    const ipAddresses = Object.values(networkInterfaces)
+      .flat()
+      .filter(details => details.family === 'IPv4' && !details.internal)
+      .map(details => details.address);
+    
+    mcpServerInstance = mcpApp.listen(PORT, HOST, () => {
+      console.log('Available on:');
+      ipAddresses.forEach(ip => {
+        console.log(`  http://${ip}:${PORT}`);
+        console.log(`  MCP endpoint: http://${ip}:${PORT}/mcp`);
+        console.log(`  Health check: http://${ip}:${PORT}/mcp/health`);
+      });
+      // 同时显示localhost
+      console.log('  http://localhost:${PORT}');
+      console.log('  MCP endpoint: http://localhost:${PORT}/mcp');
+      console.log('  Health check: http://localhost:${PORT}/mcp/health');
+    });
+    
+    console.log('MCP server started successfully');
   } catch (error) {
-    console.error('MCP服务器启动失败:', error);
+    console.error('Failed to start MCP server:', error);
   }
 }
 
-// 停止MCP服务器
+// Stop MCP server
 async function stopMCPServer() {
-  if (mcpServer) {
+  if (mcpServerInstance) {
     try {
-      await mcpServer.stop();
-      console.log('MCP服务器已停止');
+      mcpServerInstance.close();
+      console.log('MCP server stopped');
     } catch (error) {
-      console.error('停止MCP服务器失败:', error);
+      console.error('Failed to stop MCP server:', error);
     }
   }
 }
 
-// 应用准备就绪时创建窗口和启动MCP服务器
+// Application ready - create window and start MCP server
 app.whenReady().then(async () => {
   createWindow();
   
-  // 启动MCP服务器
+  // Start MCP server
   await startMCPServer();
 
   app.on('activate', () => {
@@ -163,10 +186,4 @@ app.on('window-all-closed', () => {
 app.on('before-quit', async (event) => {
   console.log('Application is about to quit, cleaning up resources...');
   await stopMCPServer();
-});
-
-// 保留基本的IPC通信处理（如果需要扩展功能时使用）
-ipcMain.handle('show-message-box', async (event, options) => {
-  const result = await dialog.showMessageBox(mainWindow, options);
-  return result;
 });

@@ -1,5 +1,6 @@
 // Draw.io API模块 - 重构为在主页面运行，通过动态获取UI对象
-(function() {
+(function() {    
+
     // 形状库定义（从drawio_stub.ts复制）
     const shape_library_stub = {
         rectangle: { category: "general", style: "rounded=0;whiteSpace=wrap;html=1;" },
@@ -18,18 +19,24 @@
 
     // 全局API对象
     window.drawioAPI = {
-        // 获取UI对象（异步）
+        // 获取UI对象（异步）- 通过drawioConnector获取
         getUI: function() {
+            console.log('[DRAWIO-API] Getting UI object through drawioConnector');
+            
             return new Promise((resolve, reject) => {
                 if (!window.drawioConnector) {
+                    console.error('[DRAWIO-API] Draw.io连接器未初始化');
                     reject(new Error('Draw.io连接器未初始化'));
                     return;
                 }
                 
                 // 通过连接器获取UI对象
+                console.log('[DRAWIO-API] Calling drawioConnector.getDrawioUI()');
                 window.drawioConnector.getDrawioUI().then(ui => {
+                    console.log('[DRAWIO-API] UI object acquired successfully through drawioConnector');
                     resolve(ui);
                 }).catch(error => {
+                    console.error('[DRAWIO-API] Failed to get UI object through drawioConnector:', error);
                     reject(error);
                 });
             });
@@ -37,6 +44,9 @@
 
         // 添加矩形
         add_new_rectangle: async function(options) {
+            console.log('[DRAWIO-API] Executing add_new_rectangle');
+            console.log('[DRAWIO-API] Parameters:', JSON.stringify(options));
+            
             try {
                 const ui = await this.getUI();
                 const editor = ui.editor;
@@ -64,6 +74,9 @@
                         height, // size
                         style // style
                     );
+                    
+                    console.log('[DRAWIO-API] Rectangle added successfully');
+                    
                     // 返回可序列化的结果
                     return {
                         success: true,
@@ -75,20 +88,23 @@
                         text: text
                     };
                 } catch (error) {
-                    console.error('添加矩形失败:', error);
+                    console.error('[DRAWIO-API] Failed to add rectangle:', error);
                     return { success: false, error: error.message };
                 } finally {
                     // 结束事务
                     graph.getModel().endUpdate();
                 }
             } catch (error) {
-                console.error('获取UI对象失败:', error);
+                console.error('[DRAWIO-API] Failed to get UI object:', error);
                 return { success: false, error: error.message };
             }
         },
 
         // 删除单元格
         delete_cell_by_id: async function(options) {
+            console.log('[DRAWIO-API] Executing delete_cell_by_id');
+            console.log('[DRAWIO-API] Parameters:', JSON.stringify(options));
+            
             try {
                 const ui = await this.getUI();
                 const editor = ui.editor;
@@ -99,6 +115,7 @@
                 const cell = graph.getModel().getCell(cell_id);
 
                 if (!cell) {
+                    console.error('[DRAWIO-API] Cell not found:', cell_id);
                     return { success: false, error: '未找到指定ID的单元格' };
                 }
 
@@ -107,22 +124,26 @@
                 try {
                     // 从图中移除单元格
                     graph.removeCells([cell]);
+                    console.log('[DRAWIO-API] Cell deleted successfully');
                     return { success: true, id: cell_id };
                 } catch (error) {
-                    console.error('删除单元格失败:', error);
+                    console.error('[DRAWIO-API] Failed to delete cell:', error);
                     return { success: false, error: error.message };
                 } finally {
                     // 结束事务
                     graph.getModel().endUpdate();
                 }
             } catch (error) {
-                console.error('获取UI对象失败:', error);
+                console.error('[DRAWIO-API] Failed to get UI object:', error);
                 return { success: false, error: error.message };
             }
         },
 
         // 添加连线
         add_edge: async function(options) {
+            console.log('[DRAWIO-API] Executing add_edge');
+            console.log('[DRAWIO-API] Parameters:', JSON.stringify(options));
+            
             try {
                 const ui = await this.getUI();
                 const editor = ui.editor;
@@ -134,6 +155,7 @@
                 const target = model.getCell(options && options.target_id ? options.target_id : null);
 
                 if (!source || !target) {
+                    console.error('[DRAWIO-API] Source or target cell not found');
                     return { success: false, error: '未找到源或目标单元格' };
                 }
 
@@ -154,6 +176,9 @@
                         target, // target
                         style // style
                     );
+                    
+                    console.log('[DRAWIO-API] Edge added successfully');
+                    
                     // 返回可序列化的结果
                     return {
                         success: true,
@@ -163,35 +188,51 @@
                         text: text
                     };
                 } catch (error) {
-                    console.error('添加连线失败:', error);
+                    console.error('[DRAWIO-API] Failed to add edge:', error);
                     return { success: false, error: error.message };
                 } finally {
                     // 结束事务
                     model.endUpdate();
                 }
             } catch (error) {
-                console.error('获取UI对象失败:', error);
+                console.error('[DRAWIO-API] Failed to get UI object:', error);
                 return { success: false, error: error.message };
             }
         },
 
         // 获取形状分类
         get_shape_categories: async function() {
+            console.log('[DRAWIO-API] Executing get_shape_categories');
+            
             try {
                 const ui = await this.getUI();
                 const categories = Object.values(shape_library_stub).reduce(function(acc, cur) {
                     acc.add(cur.category);
                     return acc;
                 }, new Set());
-                return Array.from(categories);
+                
+                const categoriesArray = Array.from(categories);
+                console.log('[DRAWIO-API] Shape categories retrieved successfully:', categoriesArray);
+                
+                return {
+                    success: true,
+                    categories: categoriesArray
+                };
             } catch (error) {
-                console.error('获取UI对象失败:', error);
-                return [];
+                console.error('[DRAWIO-API] Failed to get shape categories:', error);
+                return {
+                    success: false,
+                    categories: [],
+                    error: error.message
+                };
             }
         },
 
         // 获取分类中的形状
         get_shapes_in_category: async function(options) {
+            console.log('[DRAWIO-API] Executing get_shapes_in_category');
+            console.log('[DRAWIO-API] Parameters:', JSON.stringify(options));
+            
             try {
                 const ui = await this.getUI();
                 const category_id = options && options.category_id ? options.category_id : null;
@@ -209,15 +250,27 @@
                             title: shape_value.title || shape_key,
                         };
                     });
-                return shapes;
+                
+                console.log('[DRAWIO-API] Shapes in category retrieved successfully');
+                return {
+                    success: true,
+                    shapes: shapes
+                };
             } catch (error) {
-                console.error('获取UI对象失败:', error);
-                return [];
+                console.error('[DRAWIO-API] Failed to get shapes in category:', error);
+                return {
+                    success: false,
+                    shapes: [],
+                    error: error.message
+                };
             }
         },
 
         // 通过名称获取形状
         get_shape_by_name: async function(options) {
+            console.log('[DRAWIO-API] Executing get_shape_by_name');
+            console.log('[DRAWIO-API] Parameters:', JSON.stringify(options));
+            
             try {
                 const ui = await this.getUI();
                 const shape_name = options && options.shape_name ? options.shape_name : null;
@@ -229,20 +282,26 @@
                     }
                 );
                 if (!shape) {
+                    console.error('[DRAWIO-API] Shape not found:', shape_name);
                     return null;
                 }
+                
+                console.log('[DRAWIO-API] Shape found successfully');
                 return {
                     id: shape[0],
                     ...shape[1]
                 };
             } catch (error) {
-                console.error('获取UI对象失败:', error);
+                console.error('[DRAWIO-API] Failed to get shape by name:', error);
                 return null;
             }
         },
 
         // 添加特定形状的单元格
         add_cell_of_shape: async function(options) {
+            console.log('[DRAWIO-API] Executing add_cell_of_shape');
+            console.log('[DRAWIO-API] Parameters:', JSON.stringify(options));
+            
             try {
                 const ui = await this.getUI();
                 const editor = ui.editor;
@@ -261,6 +320,7 @@
                 const shape_entry = await this.get_shape_by_name({ shape_name: shape_name });
 
                 if (!shape_entry) {
+                    console.error('[DRAWIO-API] Shape not found:', shape_name);
                     return { success: false, error: '未找到指定形状: ' + shape_name };
                 }
 
@@ -279,6 +339,9 @@
                         shape_entry.style + ';' + style,
                         false
                     );
+                    
+                    console.log('[DRAWIO-API] Shape cell added successfully');
+                    
                     // 返回可序列化的结果
                     return {
                         success: true,
@@ -291,14 +354,14 @@
                         text: text
                     };
                 } catch (error) {
-                    console.error('添加形状单元格失败:', error);
+                    console.error('[DRAWIO-API] Failed to add shape cell:', error);
                     return { success: false, error: error.message };
                 } finally {
                     // 结束事务
                     graph.getModel().endUpdate();
                 }
             } catch (error) {
-                console.error('获取UI对象失败:', error);
+                console.error('[DRAWIO-API] Failed to get UI object:', error);
                 return { success: false, error: error.message };
             }
         },
@@ -466,6 +529,9 @@
 
         // 列出图形中的分页模型数据，包含转换和清理
         list_paged_model: async function(options) {
+            console.log('[DRAWIO-API] Executing list_paged_model');
+            console.log('[DRAWIO-API] Parameters:', JSON.stringify(options));
+            
             try {
                 const ui = await this.getUI();
                 if (options === undefined) options = {};
@@ -475,6 +541,7 @@
                 const cells = model.cells;
 
                 if (!cells) {
+                    console.warn('[DRAWIO-API] No cells found in model');
                     return [];
                 }
 
@@ -635,10 +702,18 @@
                     }
                 }
 
-                return transformed_cells;
+                console.log('[DRAWIO-API] Paged model list retrieved successfully');
+                return {
+                    success: true,
+                    shapes: transformed_cells
+                };
             } catch (error) {
-                console.error('获取UI对象失败:', error);
-                return [];
+                console.error('[DRAWIO-API] Failed to get UI object:', error);
+                return {
+                    success: false,
+                    shapes: [],
+                    error: error.message
+                };
             }
         },
 
