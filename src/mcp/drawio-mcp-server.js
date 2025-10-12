@@ -10,50 +10,52 @@ const server = new McpServer({
     version: '1.0.0'
 });
 
-// IPC communication bridge for calling Draw.io API
-let ipcBridge = null;
 
-// Set IPC bridge function
-function setIpcBridge(bridge) {
-    ipcBridge = bridge;
+// 主进程窗口对象
+let mainWindow = null;
+
+// 设置主窗口对象
+function setMainWindow(win) {
+    mainWindow = win;
 }
 
-// Helper function to call Draw.io API through IPC
+// 直接通过 mainWindow 执行渲染进程方法
 async function callDrawioAPI(method, params) {
-    if (!ipcBridge) {
-        throw new Error('IPC bridge not available');
-    }
-    
-    return new Promise((resolve, reject) => {
-        const requestId = Math.random().toString(36).substring(2, 15);
-        
-        const message = {
-            type: 'mcp_api_call',
-            requestId,
-            method,
-            params
-        };
-        
-        const timeout = setTimeout(() => {
-            reject(new Error('API call timeout'));
-        }, 10000);
-        
-        const messageHandler = (event, response) => {
-            if (response.requestId === requestId) {
-                clearTimeout(timeout);
-                ipcBridge.removeListener('mcp-api-response', messageHandler);
-                
-                if (response.success) {
-                    resolve(response.result);
-                } else {
-                    reject(new Error(response.error || 'API call failed'));
+    if (!mainWindow) throw new Error('mainWindow not set');
+    // // 直接调用主进程暴露的 executeDrawioCommand
+    // if (typeof mainWindow.executeDrawioCommand === 'function') {
+    //     return await mainWindow.executeDrawioCommand(method, params);
+    // }
+    // 或通过 webContents 执行
+    if (mainWindow.webContents) {
+        const code = `
+            (async function() {
+                try {
+                    console.log('[MCP] 开始执行渲染进程命令');
+                    if (!window.aiPanel) {
+                        console.error('[MCP] aiPanel 未初始化');
+                        throw new Error('aiPanel not initialized');
+                    }
+                    console.log('[MCP] 调用方法:', ${JSON.stringify(method)});
+                    console.log('[MCP] 调用参数:', ${JSON.stringify(params)});
+                    const result = await window.aiPanel.executeDrawioCommand(${JSON.stringify(method)}, ${JSON.stringify(params)});
+                    console.log('[MCP] 执行结果:', result);
+                    if (!result) {
+                        console.warn('[MCP] 执行结果为空，返回默认成功');
+                    }
+                    return result || { success: true };
+                } catch (error) {
+                    console.error('[MCP] 执行出错:', error.message);
+                    return { success: false, error: error.message };
                 }
-            }
-        };
-        
-        ipcBridge.on('mcp-api-response', messageHandler);
-        ipcBridge.send('mcp-api-call', message);
-    });
+            })();
+        `;
+        console.log('[MCP] 执行渲染进程代码:', code);
+        const result = await mainWindow.webContents.executeJavaScript(code);
+        console.log('[MCP] 渲染进程返回结果:', result);
+        return result;
+    }
+    throw new Error('mainWindow does not support command execution');
 }
 
 // Register add shape tool
@@ -87,20 +89,29 @@ server.registerTool(
                 text
             });
             
+            // 转换结果以匹配输出schema
+            const structuredContent = {
+                success: result.success,
+                shape_id: result.id,  // 注意这里使用 id 而不是 shape_id
+            };
+            
+            if (!result.success && result.error) {
+                structuredContent.error = result.error;
+            }
+            
             return {
-                content: [{ type: 'text', text: JSON.stringify(result) }],
-                structuredContent: result
+                content: [{ type: 'text', text: JSON.stringify(structuredContent) }],
+                structuredContent
             };
         } catch (error) {
+            const structuredContent = {
+                success: false, 
+                error: error.message || 'Unknown error'
+            };
+            
             return {
-                content: [{ type: 'text', text: JSON.stringify({ 
-                    success: false, 
-                    error: error.message || 'Unknown error' 
-                }) }],
-                structuredContent: { 
-                    success: false, 
-                    error: error.message || 'Unknown error' 
-                }
+                content: [{ type: 'text', text: JSON.stringify(structuredContent) }],
+                structuredContent
             };
         }
     }
@@ -135,20 +146,29 @@ server.registerTool(
                 text
             });
             
+            // 转换结果以匹配输出schema
+            const structuredContent = {
+                success: result.success,
+                shape_id: result.id  // 使用返回的 id 作为 shape_id
+            };
+            
+            if (!result.success && result.error) {
+                structuredContent.error = result.error;
+            }
+            
             return {
-                content: [{ type: 'text', text: JSON.stringify(result) }],
-                structuredContent: result
+                content: [{ type: 'text', text: JSON.stringify(structuredContent) }],
+                structuredContent
             };
         } catch (error) {
+            const structuredContent = {
+                success: false,
+                error: error.message || 'Unknown error'
+            };
+            
             return {
-                content: [{ type: 'text', text: JSON.stringify({ 
-                    success: false, 
-                    error: error.message || 'Unknown error' 
-                }) }],
-                structuredContent: { 
-                    success: false, 
-                    error: error.message || 'Unknown error' 
-                }
+                content: [{ type: 'text', text: JSON.stringify(structuredContent) }],
+                structuredContent
             };
         }
     }
@@ -181,20 +201,29 @@ server.registerTool(
                 style
             });
             
+            // 转换结果以匹配输出schema
+            const structuredContent = {
+                success: result.success,
+                connection_id: result.id, // 使用返回的 id 作为 connection_id
+            };
+            
+            if (!result.success && result.error) {
+                structuredContent.error = result.error;
+            }
+            
             return {
-                content: [{ type: 'text', text: JSON.stringify(result) }],
-                structuredContent: result
+                content: [{ type: 'text', text: JSON.stringify(structuredContent) }],
+                structuredContent
             };
         } catch (error) {
+            const structuredContent = {
+                success: false,
+                error: error.message || 'Unknown error'
+            };
+            
             return {
-                content: [{ type: 'text', text: JSON.stringify({ 
-                    success: false, 
-                    error: error.message || 'Unknown error' 
-                }) }],
-                structuredContent: { 
-                    success: false, 
-                    error: error.message || 'Unknown error' 
-                }
+                content: [{ type: 'text', text: JSON.stringify(structuredContent) }],
+                structuredContent
             };
         }
     }
@@ -259,7 +288,7 @@ server.registerTool(
             page_size: z.number()
         }
     },
-    async ({ page, page_size, filter }) => {
+    async ({ page = 0, page_size = 50, filter }) => {
         try {
             const result = await callDrawioAPI('list_paged_model', {
                 page,
@@ -267,30 +296,36 @@ server.registerTool(
                 filter
             });
             
+            // 确保result是数组
+            const shapes = Array.isArray(result) ? result : 
+                         (result && Array.isArray(result.shapes) ? result.shapes : []);
+            
+            // 构造符合schema的返回数据
+            const response = {
+                shapes: shapes,
+                total_count: shapes.length,
+                page: page,
+                page_size: page_size
+            };
+            
             return {
-                content: [{ type: 'text', text: JSON.stringify(result) }],
-                structuredContent: {
-                    shapes: result,
-                    total_count: result.length,
-                    page,
-                    page_size
-                }
+                content: [{ type: 'text', text: JSON.stringify(response) }],
+                structuredContent: response
             };
         } catch (error) {
+            const errorResponse = {
+                shapes: [],
+                total_count: 0,
+                page: page,
+                page_size: page_size
+            };
+            
             return {
                 content: [{ type: 'text', text: JSON.stringify({ 
-                    shapes: [],
-                    total_count: 0,
-                    page,
-                    page_size,
+                    ...errorResponse,
                     error: error.message || 'Unknown error' 
                 }) }],
-                structuredContent: { 
-                    shapes: [],
-                    total_count: 0,
-                    page,
-                    page_size
-                },
+                structuredContent: errorResponse,
                 isError: true
             };
         }
@@ -311,11 +346,12 @@ server.registerTool(
     async () => {
         try {
             const result = await callDrawioAPI('get_shape_categories', {});
-            
+            // 兼容 result 为数组或对象
+            let categories = Array.isArray(result) ? result : (result && Array.isArray(result.categories) ? result.categories : []);
             return {
-                content: [{ type: 'text', text: JSON.stringify(result) }],
+                content: [{ type: 'text', text: JSON.stringify(categories) }],
                 structuredContent: {
-                    categories: result
+                    categories: categories
                 }
             };
         } catch (error) {
@@ -355,10 +391,12 @@ server.registerTool(
                 category_id
             });
             
+            // 确保返回的 shapes 是一个数组
+            const shapes = result && result.success ? result.shapes : [];
             return {
-                content: [{ type: 'text', text: JSON.stringify(result) }],
+                content: [{ type: 'text', text: JSON.stringify({ shapes }) }],
                 structuredContent: {
-                    shapes: result
+                    shapes: shapes
                 }
             };
         } catch (error) {
@@ -427,4 +465,4 @@ app.get('/mcp/health', (req, res) => {
 });
 
 // Export app for external server management
-export { server, app, setIpcBridge };
+export { server, app, setMainWindow };

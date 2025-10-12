@@ -1,8 +1,9 @@
 import { app, BrowserWindow, ipcMain, dialog, session } from 'electron';
 import path from 'path';
+import os from 'os';
 import { fileURLToPath } from 'url';
 import Store from 'electron-store';
-import { server, app as mcpApp, setIpcBridge } from '../mcp/drawio-mcp-server.js';
+import { server, app as mcpApp, setMainWindow } from '../mcp/drawio-mcp-server.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -118,23 +119,32 @@ app.commandLine.appendSwitch('--no-sandbox');
 // Start MCP server
 async function startMCPServer() {
   try {
-    // Set IPC bridge for MCP server
-    setIpcBridge({
-      on: (channel, callback) => ipcMain.on(channel, callback),
-      removeListener: (channel, callback) => ipcMain.removeListener(channel, callback),
-      send: (channel, message) => {
-        if (mainWindow && mainWindow.webContents) {
-          mainWindow.webContents.send(channel, message);
-        }
-      }
-    });
+    // 传递主窗口对象给 MCP server
+    setMainWindow(mainWindow);
     
     // Start MCP server
     const PORT = process.env.MCP_PORT || 3001;
-    mcpServerInstance = mcpApp.listen(PORT, () => {
-      console.log(`Draw.io MCP server running on http://localhost:${PORT}`);
-      console.log(`MCP endpoint: http://localhost:${PORT}/mcp`);
-      console.log(`Health check: http://localhost:${PORT}/mcp/health`);
+    const HOST = '0.0.0.0';  // 监听所有网络接口
+    
+    // 获取本机IP地址
+    // const os = require('os');
+    const networkInterfaces = os.networkInterfaces();
+    const ipAddresses = Object.values(networkInterfaces)
+      .flat()
+      .filter(details => details.family === 'IPv4' && !details.internal)
+      .map(details => details.address);
+    
+    mcpServerInstance = mcpApp.listen(PORT, HOST, () => {
+      console.log('Available on:');
+      ipAddresses.forEach(ip => {
+        console.log(`  http://${ip}:${PORT}`);
+        console.log(`  MCP endpoint: http://${ip}:${PORT}/mcp`);
+        console.log(`  Health check: http://${ip}:${PORT}/mcp/health`);
+      });
+      // 同时显示localhost
+      console.log('  http://localhost:${PORT}');
+      console.log('  MCP endpoint: http://localhost:${PORT}/mcp');
+      console.log('  Health check: http://localhost:${PORT}/mcp/health');
     });
     
     console.log('MCP server started successfully');
@@ -154,55 +164,6 @@ async function stopMCPServer() {
     }
   }
 }
-
-// Handle MCP API calls from renderer process
-ipcMain.handle('mcp-api-call', async (event, message) => {
-  try {
-    const { method, params, requestId } = message;
-    
-    // Check if Draw.io API is available in renderer
-    if (!mainWindow || !mainWindow.webContents) {
-      throw new Error('Renderer not available');
-    }
-    
-    // Send API call to renderer process
-    const result = await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(new Error('API call timeout'));
-      }, 10000);
-      
-      const responseHandler = (event, response) => {
-        if (response.requestId === requestId) {
-          clearTimeout(timeout);
-          ipcMain.removeListener('mcp-api-response', responseHandler);
-          
-          if (response.success) {
-            resolve(response.result);
-          } else {
-            reject(new Error(response.error || 'API call failed'));
-          }
-        }
-      };
-      
-      ipcMain.on('mcp-api-response', responseHandler);
-      
-      // Send API call to renderer
-      mainWindow.webContents.send('execute-drawio-api', {
-        method,
-        params,
-        requestId
-      });
-    });
-    
-    return { success: true, result, requestId };
-  } catch (error) {
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error',
-      requestId: message.requestId 
-    };
-  }
-});
 
 // Application ready - create window and start MCP server
 app.whenReady().then(async () => {
@@ -231,8 +192,64 @@ app.on('before-quit', async (event) => {
   await stopMCPServer();
 });
 
-// 保留基本的IPC通信处理（如果需要扩展功能时使用）
-ipcMain.handle('show-message-box', async (event, options) => {
-  const result = await dialog.showMessageBox(mainWindow, options);
-  return result;
-});
+// // 保留基本的IPC通信处理（如果需要扩展功能时使用）
+// ipcMain.handle('show-message-box', async (event, options) => {
+//   const result = await dialog.showMessageBox(mainWindow, options);
+//   return result;
+// });
+
+// // 添加executeDrawioCommand调用
+// async function executeDrawioCommand(command, message) {
+//   if (!mainWindow) {
+//     throw new Error('主窗口未初始化');
+//   }
+
+//   try {
+//     // 使用JSON.stringify来正确处理字符串，防止注入
+//     const code = `
+//       (async function() {
+//         try {
+//           if (!window.aiPanel) {
+//             throw new Error('aiPanel not initialized');
+//           }
+//           const result = await window.aiPanel.executeDrawioCommand(${JSON.stringify(command)}, ${JSON.stringify(message)});
+//           return result || { success: true };
+//         } catch (error) {
+//           return { success: false, error: error.message };
+//         }
+//       })();
+//     `;
+    
+//     const result = await mainWindow.webContents.executeJavaScript(code);
+//     console.log('executeDrawioCommand result:', result);
+//     return result;
+//   } catch (error) {
+//     console.error('executeDrawioCommand error:', error);
+//     return { success: false, error: error.message };
+//   }
+// }
+
+// // 添加测试用的IPC处理器
+// ipcMain.handle('test-execute-drawio-command', async (event, { command, message }) => {
+//   try {
+//     const result = await executeDrawioCommand(command, message);
+//     return result;
+//   } catch (error) {
+//     console.error('test-execute-drawio-command error:', error);
+//     return { success: false, error: error.message };
+//   }
+// });
+
+// 等待页面完全加载后再执行测试
+// mainWindow.webContents.on('did-finish-load', () => {
+  // // 给一些时间让页面初始化完成
+  // setTimeout(async () => {
+  //   try {
+  //     console.log('开始测试 executeDrawioCommand...');
+  //     const result = await executeDrawioCommand('add_cell_of_shape', '添加矩形 形状:rectangle');
+  //     console.log('测试结果:', JSON.stringify(result, null, 2));
+  //   } catch (error) {
+  //     console.error('测试错误:', error);
+  //   }
+  // }, 10000); // 等待2秒让页面完全初始化
+// });
