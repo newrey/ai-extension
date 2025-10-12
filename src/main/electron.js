@@ -2,14 +2,10 @@ import { app, BrowserWindow, ipcMain, dialog, session } from 'electron';
 import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
-import Store from 'electron-store';
-import { server, app as mcpApp, setMainWindow } from '../mcp/drawio-mcp-server.js';
+import { app as mcpApp, setMainWindow } from '../mcp/drawio-mcp-server.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-// 初始化配置存储
-const store = new Store();
 
 let mainWindow;
 let isClosing = false; // Prevent duplicate closing
@@ -191,65 +187,3 @@ app.on('before-quit', async (event) => {
   console.log('Application is about to quit, cleaning up resources...');
   await stopMCPServer();
 });
-
-// // 保留基本的IPC通信处理（如果需要扩展功能时使用）
-// ipcMain.handle('show-message-box', async (event, options) => {
-//   const result = await dialog.showMessageBox(mainWindow, options);
-//   return result;
-// });
-
-// // 添加executeDrawioCommand调用
-// async function executeDrawioCommand(command, message) {
-//   if (!mainWindow) {
-//     throw new Error('主窗口未初始化');
-//   }
-
-//   try {
-//     // 使用JSON.stringify来正确处理字符串，防止注入
-//     const code = `
-//       (async function() {
-//         try {
-//           if (!window.aiPanel) {
-//             throw new Error('aiPanel not initialized');
-//           }
-//           const result = await window.aiPanel.executeDrawioCommand(${JSON.stringify(command)}, ${JSON.stringify(message)});
-//           return result || { success: true };
-//         } catch (error) {
-//           return { success: false, error: error.message };
-//         }
-//       })();
-//     `;
-    
-//     const result = await mainWindow.webContents.executeJavaScript(code);
-//     console.log('executeDrawioCommand result:', result);
-//     return result;
-//   } catch (error) {
-//     console.error('executeDrawioCommand error:', error);
-//     return { success: false, error: error.message };
-//   }
-// }
-
-// // 添加测试用的IPC处理器
-// ipcMain.handle('test-execute-drawio-command', async (event, { command, message }) => {
-//   try {
-//     const result = await executeDrawioCommand(command, message);
-//     return result;
-//   } catch (error) {
-//     console.error('test-execute-drawio-command error:', error);
-//     return { success: false, error: error.message };
-//   }
-// });
-
-// 等待页面完全加载后再执行测试
-// mainWindow.webContents.on('did-finish-load', () => {
-  // // 给一些时间让页面初始化完成
-  // setTimeout(async () => {
-  //   try {
-  //     console.log('开始测试 executeDrawioCommand...');
-  //     const result = await executeDrawioCommand('add_cell_of_shape', '添加矩形 形状:rectangle');
-  //     console.log('测试结果:', JSON.stringify(result, null, 2));
-  //   } catch (error) {
-  //     console.error('测试错误:', error);
-  //   }
-  // }, 10000); // 等待2秒让页面完全初始化
-// });

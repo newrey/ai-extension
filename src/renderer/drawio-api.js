@@ -703,10 +703,17 @@
                 }
 
                 console.log('[DRAWIO-API] Paged model list retrieved successfully');
-                return transformed_cells;
+                return {
+                    success: true,
+                    shapes: transformed_cells
+                };
             } catch (error) {
                 console.error('[DRAWIO-API] Failed to get UI object:', error);
-                return [];
+                return {
+                    success: false,
+                    shapes: [],
+                    error: error.message
+                };
             }
         },
 

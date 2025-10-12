@@ -31,13 +31,10 @@ async function callDrawioAPI(method, params) {
         const code = `
             (async function() {
                 try {
-                    console.log('[MCP] 开始执行渲染进程命令');
                     if (!window.aiPanel) {
                         console.error('[MCP] aiPanel 未初始化');
                         throw new Error('aiPanel not initialized');
                     }
-                    console.log('[MCP] 调用方法:', ${JSON.stringify(method)});
-                    console.log('[MCP] 调用参数:', ${JSON.stringify(params)});
                     const result = await window.aiPanel.executeDrawioCommand(${JSON.stringify(method)}, ${JSON.stringify(params)});
                     console.log('[MCP] 执行结果:', result);
                     if (!result) {
@@ -50,9 +47,9 @@ async function callDrawioAPI(method, params) {
                 }
             })();
         `;
-        console.log('[MCP] 执行渲染进程代码:', code);
+        // console.log('[MCP] 执行渲染进程代码:', code);
         const result = await mainWindow.webContents.executeJavaScript(code);
-        console.log('[MCP] 渲染进程返回结果:', result);
+        console.log('[MCP] executeDrawioCommand result:', result);
         return result;
     }
     throw new Error('mainWindow does not support command execution');
@@ -296,9 +293,8 @@ server.registerTool(
                 filter
             });
             
-            // 确保result是数组
-            const shapes = Array.isArray(result) ? result : 
-                         (result && Array.isArray(result.shapes) ? result.shapes : []);
+            // 使用API返回的shapes，如果失败则使用空数组
+            const shapes = result && result.success && Array.isArray(result.shapes) ? result.shapes : [];
             
             // 构造符合schema的返回数据
             const response = {
@@ -465,4 +461,4 @@ app.get('/mcp/health', (req, res) => {
 });
 
 // Export app for external server management
-export { server, app, setMainWindow };
+export { app, setMainWindow };
